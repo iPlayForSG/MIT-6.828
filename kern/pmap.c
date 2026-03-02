@@ -135,7 +135,7 @@ mem_init(void)
 	i386_detect_memory();
 
 	// Remove this line when you're ready to test this function.
-	panic("mem_init: This function is not finished\n");
+	// panic("mem_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -386,7 +386,43 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	return NULL;
+	// 获取页目录项的索引
+	uint32_t pdx = PDX(va);
+
+	// 获取页目录项指针
+	pte_t *pde = &pgdir[pdx];
+
+	// 检查页表是否存在
+	pte_t *pgtable_va;
+	struct PageInfo *pp;
+
+	if (*pde & PTE_P) {
+		// 页表已经存在
+		pgtable_va = (pte_t *) KADDR(PTE_ADDR(*pde));
+	}
+	else {
+		// 页表不存在
+		if (!create) {
+			return NULL;
+		}
+
+		// 分配一个新的物理页作为页表
+		if ((pp = page_alloc(ALLOC_ZERO)) == NULL) {
+			return NULL;
+		}
+
+		pp->pp_ref++;
+
+		// 获取新页表的虚拟地址
+		pgtable_va = (pte_t *) page2kva(pp);
+
+		// 更新页目录项
+		// 权限：PTE_P (Present), PTE_W (Writable), PTE_U (User accessible)
+		*pde = page2pa(pp) | PTE_P | PTE_W | PTE_U;
+	}
+
+	// pgtable_va 是页表的基址，用 PTX(va) 索引
+	return &pgtable_va[PTX(va)];
 }
 
 //
@@ -404,6 +440,20 @@ static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
 	// Fill this function in
+	size_t num_pages = (size + PGSIZE - 1) / PGSIZE;
+    
+	size_t i;
+	for (i = 0; i < num_pages; i++) {
+		// 寻找 PTE，create=1 
+		pte_t *pte = pgdir_walk(pgdir, (void *)(va + i * PGSIZE), 1);
+
+		if (pte == NULL) {
+			panic("boot_map_region: out of memory");
+		}
+
+		// 修改 PTE，填入当前页对应的物理地址 (pa + i * PGSIZE) 和权限
+		*pte = (pa + i * PGSIZE) | perm | PTE_P;
+	}
 }
 
 //
@@ -435,6 +485,24 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
+	pte_t *pte = pgdir_walk(pgdir, va, 1);
+
+	if (pte == NULL) {
+		return -E_NO_MEM; // 返回负数错误码
+	}
+
+	// 提前增加引用计数，处理 "映射到同一个物理页" 的情况
+	pp->pp_ref++;
+
+	// 如果该 va 之前已经映射了页面，先移除它
+	if (*pte & PTE_P) {
+		page_remove(pgdir, va);
+	}
+
+	// 更新 PTE
+	// page2pa(pp) 得到物理地址，perm 是低 12 位的权限标记，PTE_P 必须置位
+	*pte = page2pa(pp) | perm | PTE_P;
+
 	return 0;
 }
 
@@ -453,7 +521,19 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	return NULL;
+	pte_t *pte = pgdir_walk(pgdir, va, 0);
+
+	// 如果页表不存在，或者 PTE 标记为不存在
+	if (pte == NULL || !(*pte & PTE_P)) {
+		return NULL;
+	}
+
+	if (pte_store) {
+		*pte_store = pte;
+	}
+
+	// 将 PTE 中的物理地址转为 PageInfo 结构体
+	return pa2page(PTE_ADDR(*pte));
 }
 
 //
@@ -475,6 +555,16 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
+	pte_t *pte;
+	struct PageInfo *pp = page_lookup(pgdir, va, &pte);
+	if (pp == NULL) {
+		return;
+	}
+	page_decref(pp);
+	*pte = 0;
+
+	// 修改了页表，必须通知 CPU 的缓存失效
+	tlb_invalidate(pgdir, va);
 }
 
 //
