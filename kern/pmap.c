@@ -102,8 +102,18 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
+	if (n == 0)
+		return nextfree;
 
-	return NULL;
+	result = nextfree;
+	nextfree = ROUNDUP(nextfree + n, PGSIZE);
+
+	// 溢出检查，KERNBASE 是内核虚拟地址的起始点，npages * PGSIZE 是物理内存总大小
+	if ((uint32_t)nextfree - KERNBASE > npages * PGSIZE)
+		panic("boot_alloc: out of memory");
+
+	return result;
+	
 }
 
 // Set up a two-level page table:
@@ -149,6 +159,9 @@ mem_init(void)
 	// to initialize all fields of each struct PageInfo to 0.
 	// Your code goes here:
 
+	uint32_t pages_size = npages * sizeof(struct PageInfo);
+    pages = (struct PageInfo *) boot_alloc(pages_size);
+    memset(pages, 0, pages_size);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -252,10 +265,35 @@ page_init(void)
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
 	size_t i;
+	page_free_list = NULL;
+	// boot_alloc 返回的是虚拟地址 KV A，必须转为物理地址 PA
+	physaddr_t first_free_pa = PADDR(boot_alloc(0));
+
 	for (i = 0; i < npages; i++) {
-		pages[i].pp_ref = 0;
-		pages[i].pp_link = page_free_list;
-		page_free_list = &pages[i];
+		// 计算当前页的物理地址
+		physaddr_t pa = i * PGSIZE;
+		// 第0页：保留
+		if (i == 0) {
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+		}
+		// IO Hole (IOPHYSMEM 到 EXTPHYSMEM 之间)：保留 
+		else if (pa >= IOPHYSMEM && pa < EXTPHYSMEM) {
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+		}
+		// 内核代码区 (EXTPHYSMEM 到 first_free_pa 之间)：保留 
+		else if (pa >= EXTPHYSMEM && pa < first_free_pa) {
+			// 内核代码、全局变量、页目录表、pages数组本身 占用的区域
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+		}
+		else {
+			// 剩下的是真正的空闲页
+			pages[i].pp_ref = 0;
+			pages[i].pp_link = page_free_list;
+			page_free_list = &pages[i];
+		}
 	}
 }
 
@@ -275,7 +313,22 @@ struct PageInfo *
 page_alloc(int alloc_flags)
 {
 	// Fill this function in
-	return 0;
+	struct PageInfo *pp;
+	if (page_free_list == NULL)
+		return NULL;
+
+	pp = page_free_list;
+	page_free_list = pp->pp_link;
+	pp->pp_link = NULL;
+
+	// 处理 ALLOC_ZERO 标志，如果设置了这个标志，我们需要把分配到的物理页清零
+	if (alloc_flags & ALLOC_ZERO) {
+		// memset 操作的是虚拟地址，pp 是结构体指针，page2pa(pp) 是物理地址
+		// 必须用 page2kva 将其转换为内核虚拟地址
+		memset(page2kva(pp), 0, PGSIZE);
+	}
+
+	return pp;
 }
 
 //
@@ -288,6 +341,12 @@ page_free(struct PageInfo *pp)
 	// Fill this function in
 	// Hint: You may want to panic if pp->pp_ref is nonzero or
 	// pp->pp_link is not NULL.
+	if (pp->pp_ref != 0)
+		panic("page_free: pp->pp_ref is nonzero");
+	if (pp->pp_link != NULL)
+		panic("page_free: pp->pp_link is not NULL");
+	pp->pp_link = page_free_list;
+	page_free_list = pp;
 }
 
 //
