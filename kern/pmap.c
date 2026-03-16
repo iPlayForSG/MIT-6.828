@@ -207,9 +207,29 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
+	// CHALLENGE 1:
 
-	uint32_t mem_size = 0xFFFFFFFF - KERNBASE + 1;
-	boot_map_region(kern_pgdir, KERNBASE, mem_size, 0, PTE_W | PTE_P);
+	// uint32_t mem_size = 0xFFFFFFFF - KERNBASE + 1;
+	// boot_map_region(kern_pgdir, KERNBASE, mem_size, 0, PTE_W | PTE_P);
+
+	uint32_t eax, ebx, ecx, edx;
+	cpuid(1, &eax, &ebx, &ecx, &edx);
+	if (edx & (1 << 3)) { // edx 的第三位是 PSE 
+		cprintf("CPU Supports PSE.\n");
+		uint32_t cr4 = rcr4() | CR4_PSE;
+		lcr4(cr4);
+
+		size_t i;
+		for (i = 0; i < 64; ++i) {
+			physaddr_t pa = i * PTSIZE;
+			kern_pgdir[PDX(KERNBASE) + i] = pa | PTE_P | PTE_W | PTE_PS;
+		}
+	}
+	else {
+		cprintf("CPU Does Not Support PSE.\n");
+	}
+
+
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
 
@@ -790,6 +810,11 @@ check_va2pa(pde_t *pgdir, uintptr_t va)
 	pgdir = &pgdir[PDX(va)];
 	if (!(*pgdir & PTE_P))
 		return ~0;
+
+	if (*pgdir & PTE_PS) {
+        return PTE_ADDR(*pgdir) | (va & 0x003FFFFF);
+    }
+
 	p = (pte_t*) KADDR(PTE_ADDR(*pgdir));
 	if (!(p[PTX(va)] & PTE_P))
 		return ~0;
