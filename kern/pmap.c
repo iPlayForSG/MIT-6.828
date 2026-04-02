@@ -96,6 +96,7 @@ boot_alloc(uint32_t n)
 	if (!nextfree) {
 		extern char end[];
 		nextfree = ROUNDUP((char *) end, PGSIZE);
+		// cprintf("DEBUG boot_alloc: end=%08x, initial nextfree=%08x\n", (uint32_t)end, (uint32_t)nextfree);
 	}
 
 	// Allocate a chunk large enough to hold 'n' bytes, then update
@@ -141,6 +142,7 @@ mem_init(void)
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
 	kern_pgdir = (pde_t *) boot_alloc(PGSIZE);
+	// cprintf("DEBUG mem_init: kern_pgdir allocated at %08x\n", (uint32_t)kern_pgdir);
 	memset(kern_pgdir, 0, PGSIZE);
 
 	//////////////////////////////////////////////////////////////////////
@@ -168,6 +170,12 @@ mem_init(void)
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
 
+	
+
+	size_t envs_size = NENV * sizeof(struct Env);
+	envs = (struct Env *) boot_alloc(envs_size);
+	memset(envs, 0, envs_size);
+
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
 	// up the list of free physical pages. Once we've done so, all further
@@ -190,6 +198,7 @@ mem_init(void)
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
+
 	pages_size = ROUNDUP(npages * sizeof(struct PageInfo), PGSIZE);
     boot_map_region(kern_pgdir, UPAGES, pages_size, PADDR(pages), PTE_U | PTE_P);
 	//////////////////////////////////////////////////////////////////////
@@ -199,6 +208,9 @@ mem_init(void)
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
+
+    envs_size = ROUNDUP(NENV * sizeof(struct Env), PGSIZE);
+    boot_map_region(kern_pgdir, UENVS, envs_size, PADDR(envs), PTE_U | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -220,7 +232,7 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
-	// CHALLENGE 1:
+	// LAB 2 CHALLENGE 1:
 
 	// uint32_t mem_size = 0xFFFFFFFF - KERNBASE + 1;
 	// boot_map_region(kern_pgdir, KERNBASE, mem_size, 0, PTE_W | PTE_P);
