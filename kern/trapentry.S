@@ -46,10 +46,44 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
-
+TRAPHANDLER_NOEC(divide_entry, T_DIVIDE)
+TRAPHANDLER_NOEC(debug_entry, T_DEBUG)
+TRAPHANDLER_NOEC(nmi_entry, T_NMI)
+TRAPHANDLER_NOEC(brkpt_entry, T_BRKPT)
+TRAPHANDLER_NOEC(oflow_entry, T_OFLOW)
+TRAPHANDLER_NOEC(bound_entry, T_BOUND)
+TRAPHANDLER_NOEC(illop_entry, T_ILLOP)
+TRAPHANDLER_NOEC(device_entry, T_DEVICE)
+TRAPHANDLER(dblflt_entry, T_DBLFLT)
+TRAPHANDLER(tss_entry, T_TSS)
+TRAPHANDLER(segnp_entry, T_SEGNP)
+TRAPHANDLER(stack_entry, T_STACK)
+TRAPHANDLER(gpflt_entry, T_GPFLT)
+TRAPHANDLER(pgflt_entry, T_PGFLT)
+TRAPHANDLER_NOEC(fperr_entry, T_FPERR)
+TRAPHANDLER(align_entry, T_ALIGN)
+TRAPHANDLER_NOEC(mchk_entry, T_MCHK)
+TRAPHANDLER_NOEC(simderr_entry, T_SIMDERR)
 
 
 /*
  * Lab 3: Your code here for _alltraps
  */
 
+_alltraps:
+    # 按照 struct Trapframe 的布局，依次压入剩余的段寄存器和通用寄存器
+    pushl %ds
+    pushl %es
+    pushal
+
+    # 异常发生后，需要确保内核使用的是内核的数据段 GD_KD
+    movw $GD_KD, %ax
+    movw %ax, %ds
+    movw %ax, %es
+
+    # 将当前栈顶指针，也就是 Trapframe 的起始地址作为参数压栈
+    # 传递给 C 函数 void trap(struct Trapframe *tf)
+    pushl %esp
+
+    # 将控制权移交给 C 的处理逻辑
+    call trap
