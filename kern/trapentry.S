@@ -114,3 +114,35 @@ _alltraps:
 
     # 将控制权移交给 C 的处理逻辑
     call trap
+/* My Attempt at Lab 3 Challenge 3
+.globl sysenter_entry
+.type sysenter_entry, @function
+.align 2
+sysenter_entry:
+    # 此时，硬件已经将 esp 设为了 KSTACKTOP，CS 设为了 GD_KT。
+    # 寄存器中包含 eax (num), edx (a1), ecx (a2), ebx (a3), edi (a4)
+    # esi (用户态返回 eip), ebp (用户态返回 esp)
+    
+    # 准备调用 kern/syscall.c 的 syscall()
+    pushl $0       # a5
+    pushl %edi     # a4
+    pushl %ebx     # a3
+    pushl %ecx     # a2
+    pushl %edx     # a1
+    pushl %eax     # syscallno
+    
+    call syscall
+    
+    # 清理参数栈，6 个 32 位参数 = 24 字节
+    addl $24, %esp
+    
+
+    # sysexit 指令要求返回的 eip 必须在 %edx 中，返回的 esp 必须在 %ecx 中。
+    movl %esi, %edx
+    movl %ebp, %ecx
+    
+    # sysexit 不会自动开启中断，我们需要在返回用户态前手动开中断
+    sti 
+    
+    sysexit
+*/
