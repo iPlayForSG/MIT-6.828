@@ -68,7 +68,8 @@ trap_init(void)
 
 	extern uint32_t trap_entries[];
 	for (int i = 0; i <= 31; i++) {
-		int dpl = 0;
+		// int dpl = 0;
+		int dpl = (i == T_BRKPT) ? 3 : 0; // Exercise 6 fix
 		SETGATE(idt[i], 0, GD_KT, trap_entries[i], dpl);
 	}
 	// Per-CPU setup 
@@ -149,6 +150,18 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+
+	// 页错误异常 T_PGFLT: 14
+	if (tf->tf_trapno == T_PGFLT) {
+		page_fault_handler(tf);
+		return;
+	}
+
+	// 断点异常 T_BRKPT: 3
+	if (tf->tf_trapno == T_BRKPT) {
+		monitor(tf);
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
