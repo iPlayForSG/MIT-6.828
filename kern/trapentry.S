@@ -90,6 +90,7 @@ TRAPHANDLER_NOEC(reserved28_entry, 28)
 TRAPHANDLER_NOEC(reserved29_entry, 29)
 TRAPHANDLER_NOEC(reserved30_entry, 30)
 TRAPHANDLER_NOEC(reserved31_entry, 31)
+TRAPHANDLER_NOEC(syscall_entry, T_SYSCALL)
 
 
 /*

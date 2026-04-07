@@ -72,6 +72,8 @@ trap_init(void)
 		int dpl = (i == T_BRKPT) ? 3 : 0; // Exercise 6 fix
 		SETGATE(idt[i], 0, GD_KT, trap_entries[i], dpl);
 	}
+	extern void syscall_entry();
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_entry, 3);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -170,6 +172,18 @@ trap_dispatch(struct Trapframe *tf)
 		return;
 	}
 
+	if (tf->tf_trapno == T_SYSCALL) {
+		int32_t ret = syscall( // 注意寄存器顺序。eax 是调用号
+			tf->tf_regs.reg_eax,
+			tf->tf_regs.reg_edx,
+			tf->tf_regs.reg_ecx,
+			tf->tf_regs.reg_ebx,
+			tf->tf_regs.reg_edi,
+			tf->tf_regs.reg_esi
+		);
+		tf->tf_regs.reg_eax = ret;
+		return;
+	}
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
 	if (tf->tf_cs == GD_KT)
