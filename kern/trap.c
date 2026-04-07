@@ -151,6 +151,13 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
 
+
+	// 调试异常 T_DEBUG: 1
+	if (tf->tf_trapno == T_DEBUG) {
+		monitor(tf);
+		return;
+	}
+	
 	// 页错误异常 T_PGFLT: 14
 	if (tf->tf_trapno == T_PGFLT) {
 		page_fault_handler(tf);

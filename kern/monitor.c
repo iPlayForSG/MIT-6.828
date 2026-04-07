@@ -29,6 +29,8 @@ static struct Command commands[] = {
 	{ "showmappings", "Display physical page mappings and permissions (showmappings 0x<begin_va> 0x<end_va>)", mon_showmappings },
     { "setm", "Set or clear permission bits (setm <va> <P|W|U> <0|1>)", mon_setm },
     { "dumpm", "Dump memory contents (dumpm <-v|-p> <addr> <nwords>)", mon_dumpm },
+    { "c", "Continue execution from the current location", mon_c },
+	{ "si", "Single-step one instruction", mon_si },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -213,6 +215,28 @@ mon_dumpm(int argc, char **argv, struct Trapframe *tf)
     return 0;
 }
 
+int mon_c(int argc, char **argv, struct Trapframe *tf) {
+	if (tf == NULL) {
+		cprintf("Error: No trapped environment to continue.\n");
+		return 0;
+	}
+	// 清除 EFLAGS 中的 TF 位，对应掩码 FL_TF: 0x0100，保证后续指令连续执行
+	tf->tf_eflags &= ~FL_TF;
+	
+	// 返回 -1，跳出 monitor 的 while (1)
+	return -1;
+}
+
+int mon_si(int argc, char **argv, struct Trapframe *tf) {
+	if (tf == NULL) {
+		cprintf("Error: No trapped environment to single step.\n");
+		return 0;
+	}
+	// 将 EFLAGS 中的 TF 位置为 1，让 CPU 自动触发 T_DEBUG 异常
+	tf->tf_eflags |= FL_TF;
+	
+	return -1;
+}
 /***** Kernel monitor command interpreter *****/
 
 #define WHITESPACE "\t\r\n "
