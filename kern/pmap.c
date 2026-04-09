@@ -651,6 +651,19 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+	uintptr_t start = (uintptr_t) va;
+	uintptr_t end = start + len;
+	uintptr_t i;
+
+	for (i = start; i < end; i = ROUNDDOWN(i + PGSIZE, PGSIZE)) { // 确保下一次循环严格从页边界开始
+		pte_t *pte = pgdir_walk(env->env_pgdir, (void *)i, 0);
+		
+		// 址是否超出了用户空间上限、页表项是否存在、是否对该页有相应的权限
+		if (i >= ULIM || !pte || !(*pte & PTE_P) || (*pte & perm) != perm) {
+			user_mem_check_addr = i;
+			return -E_FAULT;
+		}
+	}
 
 	return 0;
 }

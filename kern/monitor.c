@@ -26,6 +26,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+    { "backtrace", "Display a stack backtrace", mon_backtrace },
 	{ "showmappings", "Display physical page mappings and permissions (showmappings 0x<begin_va> 0x<end_va>)", mon_showmappings },
     { "setm", "Set or clear permission bits (setm <va> <P|W|U> <0|1>)", mon_setm },
     { "dumpm", "Dump memory contents (dumpm <-v|-p> <addr> <nwords>)", mon_dumpm },
