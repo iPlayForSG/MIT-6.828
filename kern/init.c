@@ -17,6 +17,7 @@
 
 static void boot_aps(void);
 
+#include <inc/x86.h>
 
 void
 i386_init(void)
@@ -34,6 +35,17 @@ i386_init(void)
 	env_init();
 	trap_init();
 
+/* My Attempt at Lab 3 Challenge 3
+	extern void sysenter_entry();
+	// 内核代码段选择子
+	wrmsr(MSR_IA32_SYSENTER_CS, GD_KT);
+	// 内核栈顶指针
+	wrmsr(MSR_IA32_SYSENTER_ESP, KSTACKTOP);
+	// 系统调用入口地址
+	wrmsr(MSR_IA32_SYSENTER_EIP, (uint32_t)sysenter_entry);
+*/
+
+
 	// Lab 4 multiprocessor initialization functions
 	mp_init();
 	lapic_init();
@@ -46,7 +58,6 @@ i386_init(void)
 
 	// Starting non-boot CPUs
 	boot_aps();
-
 #if defined(TEST)
 	// Don't touch -- used by grading script!
 	ENV_CREATE(TEST, ENV_TYPE_USER);

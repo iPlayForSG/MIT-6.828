@@ -73,6 +73,14 @@ trap_init(void)
 
 	// LAB 3: Your code here.
 
+	extern uint32_t trap_entries[];
+	for (int i = 0; i <= 31; i++) {
+		// int dpl = 0;
+		int dpl = (i == T_BRKPT) ? 3 : 0; // Exercise 6 fix
+		SETGATE(idt[i], 0, GD_KT, trap_entries[i], dpl);
+	}
+	extern void syscall_entry();
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_entry, 3);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -177,6 +185,37 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
 
+	// 调试异常 T_DEBUG: 1
+	if (tf->tf_trapno == T_DEBUG) {
+		monitor(tf);
+		return;
+	}
+	
+	// 页错误异常 T_PGFLT: 14
+	if (tf->tf_trapno == T_PGFLT) {
+		page_fault_handler(tf);
+		return;
+	}
+
+	// 断点异常 T_BRKPT: 3
+	if (tf->tf_trapno == T_BRKPT) {
+		monitor(tf);
+		return;
+	}
+
+	if (tf->tf_trapno == T_SYSCALL) {
+		int32_t ret = syscall( // 注意寄存器顺序。eax 是调用号
+			tf->tf_regs.reg_eax,
+			tf->tf_regs.reg_edx,
+			tf->tf_regs.reg_ecx,
+			tf->tf_regs.reg_ebx,
+			tf->tf_regs.reg_edi,
+			tf->tf_regs.reg_esi
+		);
+		tf->tf_regs.reg_eax = ret;
+		return;
+	}
+	
 	// Handle spurious interrupts
 	// The hardware sometimes raises these because of noise on the
 	// IRQ line or other reasons. We don't care.
@@ -189,6 +228,7 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -271,7 +311,9 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
-
+	if ((tf->tf_cs & 3) == 0) {
+		panic("page fault in kernel mode, fault_va: 0x%08x", fault_va);
+	}
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
 
