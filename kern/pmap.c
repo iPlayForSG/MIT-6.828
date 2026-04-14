@@ -354,8 +354,13 @@ page_init(void)
 	for (i = 0; i < npages; i++) {
 		// 计算当前页的物理地址
 		physaddr_t pa = i * PGSIZE;
+		// Lab 4 Exercise 2: 保留 MPENTRY_PADDR 这个物理页，防止 AP 启动代码被覆盖
+		if (i == PGNUM(MPENTRY_PADDR)) {
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+		}
 		// 第0页：保留
-		if (i == 0) {
+		else if (i == 0) {
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 		}
@@ -693,7 +698,17 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	size = ROUNDUP(size, PGSIZE);
+	if (base + size > MMIOLIM) {
+		panic("mmio_map_region: MMIO region overflow");
+	}
+
+	boot_map_region(kern_pgdir, base, size, ROUNDDOWN(pa, PGSIZE), PTE_W | PTE_PCD | PTE_PWT);
+	uintptr_t ret_va = base;
+	base += size;
+
+	return (void *) ret_va;
+	// panic("mmio_map_region not implemented");
 }
 
 static uintptr_t user_mem_check_addr;
