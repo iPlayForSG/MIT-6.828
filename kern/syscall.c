@@ -346,7 +346,66 @@ static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	struct Env *target;
+	int r;
+
+	// 查找目标进程。注意 checkperm = 0，因为任何进程都可以给任何进程发消息
+	if ((r = envid2env(envid, &target, 0)) < 0) {
+		return r;
+	}
+
+	// 检查目标是否在等待接收
+	if (!target->env_ipc_recving) {
+		return -E_IPC_NOT_RECV;
+	}
+
+	// 处理可选的物理页共享逻辑
+	if ((uint32_t)srcva < UTOP) {
+
+		// 发送方想发页，检查地址边界与对齐
+		if ((uint32_t)srcva % PGSIZE != 0) return -E_INVAL;
+
+		// 检查权限位是否合法，必须有 U 和 P
+		if ((perm & PTE_U) == 0 || (perm & PTE_P) == 0 || (perm & ~PTE_SYSCALL) != 0) return -E_INVAL;
+
+		pte_t *pte;
+		struct PageInfo *pp = page_lookup(curenv->env_pgdir, srcva, &pte);
+
+		// 发送方该地址根本没映射物理页
+		if (!pp) return -E_INVAL; 
+
+		// 如果试图以写权限发送，发送方自己必须也有写权限
+		if ((perm & PTE_W) && (*pte & PTE_W) == 0) return -E_INVAL;
+
+		// 如果目标也愿意接收页 (dstva < UTOP)
+		if ((uint32_t)target->env_ipc_dstva < UTOP) {
+			if ((r = page_insert(target->env_pgdir, pp, target->env_ipc_dstva, perm)) < 0) {
+				return r;
+			}
+			target->env_ipc_perm = perm;
+		}
+		else {
+			// 目标不愿意接收
+			target->env_ipc_perm = 0; 
+		}
+	}
+	else {
+		// 发送方不想发页
+		target->env_ipc_perm = 0;
+	}
+
+	// 正式塞入数据
+	target->env_ipc_value = value;
+	target->env_ipc_from = curenv->env_id;
+	
+	// 唤醒目标进程
+	target->env_ipc_recving = 0;
+	target->env_status = ENV_RUNNABLE;
+	
+	// 篡改目标进程的寄存器现场，让它醒来后收到返回值 0
+	target->env_tf.tf_regs.reg_eax = 0;
+	return 0;
+	// panic("sys_ipc_try_send not implemented");
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -364,7 +423,20 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	// 校验 dstva，如果它低于 UTOP，那它必须是页对齐的。
+	if ((uint32_t)dstva < UTOP && (uint32_t)dstva % PGSIZE != 0) {
+		return -E_INVAL;
+	}
+
+	curenv->env_ipc_recving = 1;
+	curenv->env_ipc_dstva = dstva;
+	
+	// 把自己标记为不可运行，让出 CPU
+	curenv->env_status = ENV_NOT_RUNNABLE;
+	
+	// 跳转到调度器，放弃当前时间片。当以后被发送方唤醒时，发送方会负责修改我们的 Trapframe 的 eax 为 0。
+	sched_yield();
+	// panic("sys_ipc_recv not implemented");
 	return 0;
 }
 
@@ -413,6 +485,12 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 			
 		case SYS_env_set_pgfault_upcall:
 			return sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
+
+		case SYS_ipc_try_send:
+			return sys_ipc_try_send((envid_t)a1, (uint32_t)a2, (void *)a3, (unsigned)a4);
+
+		case SYS_ipc_recv:
+			return sys_ipc_recv((void *)a1);
 			
 		default:
 			return -E_INVAL;

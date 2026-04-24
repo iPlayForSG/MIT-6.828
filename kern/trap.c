@@ -260,6 +260,13 @@ trap_dispatch(struct Trapframe *tf)
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
 
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+		// 告诉 Local APIC 中断已收到
+		lapic_eoi();
+		// 2剥夺当前进程控制权，重新调度
+		sched_yield();
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
