@@ -85,7 +85,21 @@ sys_exofork(void)
 	// will appear to return 0.
 
 	// LAB 4: Your code here.
-	panic("sys_exofork not implemented");
+	struct Env *child_env;
+	int r;
+
+	// 分配新环境，父进程是 curenv
+	if ((r = env_alloc(&child_env, curenv->env_id)) < 0) {
+		return r;
+	}
+
+	child_env->env_status = ENV_NOT_RUNNABLE;
+	child_env->env_tf = curenv->env_tf;
+	// 修改子进程的 eax 为 0，这样子进程从 sys_exofork 返回时拿到的是 0
+	child_env->env_tf.tf_regs.reg_eax = 0;
+
+	return child_env->env_id;
+	// panic("sys_exofork not implemented");
 }
 
 // Set envid's env_status to status, which must be ENV_RUNNABLE
@@ -105,7 +119,18 @@ sys_env_set_status(envid_t envid, int status)
 	// envid's status.
 
 	// LAB 4: Your code here.
-	panic("sys_env_set_status not implemented");
+	struct Env *e;
+	int r;
+	if (status != ENV_RUNNABLE && status != ENV_NOT_RUNNABLE) {
+		return -E_INVAL;
+	}
+	// 查找目标环境，checkperm = 1 代表检查权限
+	if ((r = envid2env(envid, &e, 1)) < 0) {
+		return r;
+	}
+	e->env_status = status;
+	return 0;
+	// panic("sys_env_set_status not implemented");
 }
 
 // Set the page fault upcall for 'envid' by modifying the corresponding struct
@@ -120,7 +145,15 @@ static int
 sys_env_set_pgfault_upcall(envid_t envid, void *func)
 {
 	// LAB 4: Your code here.
-	panic("sys_env_set_pgfault_upcall not implemented");
+	struct Env *e;
+	int r;
+	if ((r = envid2env(envid, &e, 1)) < 0) {
+		return r;
+	}
+	e->env_pgfault_upcall = func;
+	return 0;
+
+	// panic("sys_env_set_pgfault_upcall not implemented");
 }
 
 // Allocate a page of memory and map it at 'va' with permission
@@ -150,7 +183,29 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 	//   allocated!
 
 	// LAB 4: Your code here.
-	panic("sys_page_alloc not implemented");
+	struct Env *e;
+	struct PageInfo *pp;
+	int r;
+	// 地址合法性与对齐
+	if ((uint32_t)va >= UTOP || (uint32_t)va % PGSIZE != 0) {
+		return -E_INVAL;
+	}
+	// 权限标志位检查，必须有 U 和 P，不能有保留位
+	if ((perm & PTE_U) == 0 || (perm & PTE_P) == 0 || (perm & ~PTE_SYSCALL) != 0) {
+		return -E_INVAL;
+	}
+	if ((r = envid2env(envid, &e, 1)) < 0) {
+		return r;
+	}
+	if ((pp = page_alloc(ALLOC_ZERO)) == NULL) {
+		return -E_NO_MEM;
+	}
+	if ((r = page_insert(e->env_pgdir, pp, va, perm)) < 0) {
+		page_free(pp);
+		return r;
+	}
+	return 0;
+	// panic("sys_page_alloc not implemented");
 }
 
 // Map the page of memory at 'srcva' in srcenvid's address space
@@ -181,7 +236,43 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	//   check the current permissions on the page.
 
 	// LAB 4: Your code here.
-	panic("sys_page_map not implemented");
+	struct Env *srcenv, *dstenv;
+	struct PageInfo *pp;
+	pte_t *pte;
+	int r;
+
+	// 地址与对齐检查
+	if ((uint32_t)srcva >= UTOP || (uint32_t)srcva % PGSIZE != 0 ||
+	    (uint32_t)dstva >= UTOP || (uint32_t)dstva % PGSIZE != 0) {
+		return -E_INVAL;
+	}
+	// 权限检查
+	if ((perm & PTE_U) == 0 || (perm & PTE_P) == 0 || (perm & ~PTE_SYSCALL) != 0) {
+		return -E_INVAL;
+	}
+
+	if ((r = envid2env(srcenvid, &srcenv, 1)) < 0 ||
+	    (r = envid2env(dstenvid, &dstenv, 1)) < 0) {
+		return r;
+	}
+
+	// 查找源地址映射的物理页
+	if ((pp = page_lookup(srcenv->env_pgdir, srcva, &pte)) == NULL) {
+		return -E_INVAL;
+	}
+
+	// 如果想以写权限映射，源页表必须也可写
+	if ((perm & PTE_W) != 0 && (*pte & PTE_W) == 0) {
+		return -E_INVAL;
+	}
+
+	// 建立映射
+	if ((r = page_insert(dstenv->env_pgdir, pp, dstva, perm)) < 0) {
+		return r;
+	}
+
+	return 0;
+	// panic("sys_page_map not implemented");
 }
 
 // Unmap the page of memory at 'va' in the address space of 'envid'.
@@ -197,7 +288,20 @@ sys_page_unmap(envid_t envid, void *va)
 	// Hint: This function is a wrapper around page_remove().
 
 	// LAB 4: Your code here.
-	panic("sys_page_unmap not implemented");
+	struct Env *e;
+	int r;
+
+	if ((uint32_t)va >= UTOP || (uint32_t)va % PGSIZE != 0) {
+		return -E_INVAL;
+	}
+
+	if ((r = envid2env(envid, &e, 1)) < 0) {
+		return r;
+	}
+
+	page_remove(e->env_pgdir, va);
+	return 0;
+	// panic("sys_page_unmap not implemented");
 }
 
 // Try to send 'value' to the target env 'envid'.
@@ -291,6 +395,24 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		case SYS_yield:
 			sys_yield();
 			return 0;
+
+		case SYS_exofork:
+			return sys_exofork();
+
+		case SYS_env_set_status:
+			return sys_env_set_status((envid_t)a1, (int)a2);
+
+		case SYS_page_alloc:
+			return sys_page_alloc((envid_t)a1, (void *)a2, (int)a3);
+
+		case SYS_page_map:
+			return sys_page_map((envid_t)a1, (void *)a2, (envid_t)a3, (void *)a4, (int)a5);
+
+		case SYS_page_unmap:
+			return sys_page_unmap((envid_t)a1, (void *)a2);
+			
+		case SYS_env_set_pgfault_upcall:
+			return sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
 			
 		default:
 			return -E_INVAL;

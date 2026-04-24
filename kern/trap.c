@@ -346,6 +346,40 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 
+	if (curenv->env_pgfault_upcall) {
+		struct UTrapframe *utf;
+
+		// 判断当前是否已处于用户异常栈 (嵌套异常)
+		if (tf->tf_esp >= UXSTACKTOP - PGSIZE && tf->tf_esp < UXSTACKTOP) {
+			// 在当前 esp 的基础上做下移 留出 4 字节的空字，外加 UTrapframe 的大小
+			utf = (struct UTrapframe *)(tf->tf_esp - 4 - sizeof(struct UTrapframe));
+		}
+		else {
+			// 普通异常直接放在用户异常栈的栈顶往下
+			utf = (struct UTrapframe *)(UXSTACKTOP - sizeof(struct UTrapframe));
+		}
+
+		// 用户程序可能登记了 upcall，但它压根没分配异常栈的物理页
+		// 如果不查就直接写，内核会在往 utf 写入数据时发生缺页，导致 panic。
+		user_mem_assert(curenv, (void *)utf, sizeof(struct UTrapframe), PTE_U | PTE_W);
+
+		// UTrapframe 构造
+		utf->utf_fault_va = fault_va;
+		utf->utf_err = tf->tf_err;       // 缺页的错误码
+		utf->utf_regs = tf->tf_regs;
+		utf->utf_eip = tf->tf_eip;
+		utf->utf_eflags = tf->tf_eflags; 
+		utf->utf_esp = tf->tf_esp;
+
+		// 让 CPU 在 iret 返回用户态时，强行跳去执行 upcall 函数，并且把栈指针强行切到这个刚刚做好的用户异常栈上。
+		tf->tf_eip = (uint32_t)curenv->env_pgfault_upcall;
+		tf->tf_esp = (uint32_t)utf;
+
+		// 按照篡改后的现场，恢复执行用户程序
+		env_run(curenv);
+	}
+
+
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
 		curenv->env_id, fault_va, tf->tf_eip);
