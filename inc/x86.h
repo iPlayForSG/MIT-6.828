@@ -3,6 +3,22 @@
 
 #include <inc/types.h>
 
+/* My Attempt at Lab 3 Challenge 3
+#define MSR_IA32_SYSENTER_CS  0x174
+#define MSR_IA32_SYSENTER_ESP 0x175
+#define MSR_IA32_SYSENTER_EIP 0x176
+
+static inline void wrmsr(uint32_t msr, uint64_t val) {
+    asm volatile (
+        "wrmsr"
+        : // 无输出操作数
+        : "c" (msr),                       // 输入: 将 msr 放入 ecx
+          "a" ((uint32_t)val),             // 输入: 将 val 的低 32 位放入 eax
+          "d" ((uint32_t)(val >> 32))      // 输入: 将 val 的高 32 位放入 edx
+    );
+}
+*/
+
 static inline void
 breakpoint(void)
 {

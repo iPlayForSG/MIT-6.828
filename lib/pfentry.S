@@ -65,18 +65,30 @@ _pgfault_upcall:
 	// ways as registers become unavailable as scratch space.
 	//
 	// LAB 4: Your code here.
+	movl 48(%esp), %ebx      // 拿到正常用户栈的栈顶指针 esp
+	subl $4, %ebx            // 栈顶下移 4 字节，腾出空间来放 eip
+	movl %ebx, 48(%esp)      // 把减去 4 之后的 esp 重新写回 UTrapframe 中
+
+	movl 40(%esp), %eax      // 拿到发生异常时的指令指针 eip
+	movl %eax, (%ebx)        // 把 eip 压入正常用户栈刚刚腾出的空间里
 
 	// Restore the trap-time registers.  After you do this, you
 	// can no longer modify any general-purpose registers.
 	// LAB 4: Your code here.
+	addl $8, %esp            // 跳过 UTrapframe 开头的 utf_fault_va (4 字节) 和 utf_err (4 字节)
+    popal                    // 弹出并恢复所有的通用寄存器，此时 esp 指向 utf_eip
 
 	// Restore eflags from the stack.  After you do this, you can
 	// no longer use arithmetic operations or anything else that
 	// modifies eflags.
 	// LAB 4: Your code here.
+	addl $4, %esp            // 跳过已经处理过的 utf_eip (4 字节)，此时 esp 指向 utf_eflags
+    popfl                    // 弹出并恢复标志寄存器 (此时 esp 指向 utf_esp)
 
 	// Switch back to the adjusted trap-time stack.
 	// LAB 4: Your code here.
+	popl %esp                // 将修改过(减去了4)的 utf_esp 弹出，直接赋给 esp 寄存器。完成切栈
 
 	// Return to re-execute the instruction that faulted.
 	// LAB 4: Your code here.
+	ret                      // 从正常用户栈顶弹出我们刚才放过去的 eip，恢复执行

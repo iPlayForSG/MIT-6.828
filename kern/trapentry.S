@@ -6,6 +6,13 @@
 
 #include <kern/picirq.h>
 
+###################################################################
+# Data section for the array of trap entry points
+###################################################################
+.data
+.p2align 2
+.globl trap_entries
+trap_entries:
 
 ###################################################################
 # exceptions/interrupts
@@ -22,35 +29,138 @@
  * where NAME is the argument passed to TRAPHANDLER.
  */
 #define TRAPHANDLER(name, num)						\
+	.text; \
 	.globl name;		/* define global symbol for 'name' */	\
 	.type name, @function;	/* symbol type is function */		\
 	.align 2;		/* align function definition */		\
 	name:			/* function starts here */		\
 	pushl $(num);							\
-	jmp _alltraps
+	jmp _alltraps; \
+	.data; \
+	.long name       /* 将当前入口标签的地址追加到 .data 段的数组中 */
 
 /* Use TRAPHANDLER_NOEC for traps where the CPU doesn't push an error code.
  * It pushes a 0 in place of the error code, so the trap frame has the same
  * format in either case.
  */
 #define TRAPHANDLER_NOEC(name, num)					\
+	.text; \
 	.globl name;							\
 	.type name, @function;						\
 	.align 2;							\
 	name:								\
 	pushl $0;							\
 	pushl $(num);							\
-	jmp _alltraps
+	jmp _alltraps; \
+	.data; \
+	.long name
 
 .text
 
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+TRAPHANDLER_NOEC(divide_entry, T_DIVIDE)    /* 0 */
+TRAPHANDLER_NOEC(debug_entry, T_DEBUG)      /* 1 */
+TRAPHANDLER_NOEC(nmi_entry, T_NMI)          /* 2 */
+TRAPHANDLER_NOEC(brkpt_entry, T_BRKPT)      /* 3 */
+TRAPHANDLER_NOEC(oflow_entry, T_OFLOW)      /* 4 */
+TRAPHANDLER_NOEC(bound_entry, T_BOUND)      /* 5 */
+TRAPHANDLER_NOEC(illop_entry, T_ILLOP)      /* 6 */
+TRAPHANDLER_NOEC(device_entry, T_DEVICE)    /* 7 */
+TRAPHANDLER(dblflt_entry, T_DBLFLT)         /* 8 */
+TRAPHANDLER_NOEC(reserved9_entry, 9)        /* 9 (Reserved) */
+TRAPHANDLER(tss_entry, T_TSS)               /* 10 */
+TRAPHANDLER(segnp_entry, T_SEGNP)           /* 11 */
+TRAPHANDLER(stack_entry, T_STACK)           /* 12 */
+TRAPHANDLER(gpflt_entry, T_GPFLT)           /* 13 */
+TRAPHANDLER(pgflt_entry, T_PGFLT)           /* 14 */
+TRAPHANDLER_NOEC(reserved15_entry, 15)      /* 15 (Reserved) */
+TRAPHANDLER_NOEC(fperr_entry, T_FPERR)      /* 16 */
+TRAPHANDLER(align_entry, T_ALIGN)           /* 17 */
+TRAPHANDLER_NOEC(mchk_entry, T_MCHK)        /* 18 */
+TRAPHANDLER_NOEC(simderr_entry, T_SIMDERR)  /* 19 */
+TRAPHANDLER_NOEC(reserved20_entry, 20)
+TRAPHANDLER_NOEC(reserved21_entry, 21)
+TRAPHANDLER_NOEC(reserved22_entry, 22)
+TRAPHANDLER_NOEC(reserved23_entry, 23)
+TRAPHANDLER_NOEC(reserved24_entry, 24)
+TRAPHANDLER_NOEC(reserved25_entry, 25)
+TRAPHANDLER_NOEC(reserved26_entry, 26)
+TRAPHANDLER_NOEC(reserved27_entry, 27)
+TRAPHANDLER_NOEC(reserved28_entry, 28)
+TRAPHANDLER_NOEC(reserved29_entry, 29)
+TRAPHANDLER_NOEC(reserved30_entry, 30)
+TRAPHANDLER_NOEC(reserved31_entry, 31)
+TRAPHANDLER_NOEC(syscall_entry, T_SYSCALL)
 
-
+TRAPHANDLER_NOEC(irq_0, IRQ_OFFSET + 0);
+TRAPHANDLER_NOEC(irq_1, IRQ_OFFSET + 1);
+TRAPHANDLER_NOEC(irq_2, IRQ_OFFSET + 2);
+TRAPHANDLER_NOEC(irq_3, IRQ_OFFSET + 3);
+TRAPHANDLER_NOEC(irq_4, IRQ_OFFSET + 4);
+TRAPHANDLER_NOEC(irq_5, IRQ_OFFSET + 5);
+TRAPHANDLER_NOEC(irq_6, IRQ_OFFSET + 6);
+TRAPHANDLER_NOEC(irq_7, IRQ_OFFSET + 7);
+TRAPHANDLER_NOEC(irq_8, IRQ_OFFSET + 8);
+TRAPHANDLER_NOEC(irq_9, IRQ_OFFSET + 9);
+TRAPHANDLER_NOEC(irq_10, IRQ_OFFSET + 10);
+TRAPHANDLER_NOEC(irq_11, IRQ_OFFSET + 11);
+TRAPHANDLER_NOEC(irq_12, IRQ_OFFSET + 12);
+TRAPHANDLER_NOEC(irq_13, IRQ_OFFSET + 13);
+TRAPHANDLER_NOEC(irq_14, IRQ_OFFSET + 14);
+TRAPHANDLER_NOEC(irq_15, IRQ_OFFSET + 15);
 
 /*
  * Lab 3: Your code here for _alltraps
  */
 
+_alltraps:
+    # 按照 struct Trapframe 的布局，依次压入剩余的段寄存器和通用寄存器
+    pushl %ds
+    pushl %es
+    pushal
+
+    # 异常发生后，需要确保内核使用的是内核的数据段 GD_KD
+    movw $GD_KD, %ax
+    movw %ax, %ds
+    movw %ax, %es
+
+    # 将当前栈顶指针，也就是 Trapframe 的起始地址作为参数压栈
+    # 传递给 C 函数 void trap(struct Trapframe *tf)
+    pushl %esp
+
+    # 将控制权移交给 C 的处理逻辑
+    call trap
+/* My Attempt at Lab 3 Challenge 3
+.globl sysenter_entry
+.type sysenter_entry, @function
+.align 2
+sysenter_entry:
+    # 此时，硬件已经将 esp 设为了 KSTACKTOP，CS 设为了 GD_KT。
+    # 寄存器中包含 eax (num), edx (a1), ecx (a2), ebx (a3), edi (a4)
+    # esi (用户态返回 eip), ebp (用户态返回 esp)
+    
+    # 准备调用 kern/syscall.c 的 syscall()
+    pushl $0       # a5
+    pushl %edi     # a4
+    pushl %ebx     # a3
+    pushl %ecx     # a2
+    pushl %edx     # a1
+    pushl %eax     # syscallno
+    
+    call syscall
+    
+    # 清理参数栈，6 个 32 位参数 = 24 字节
+    addl $24, %esp
+    
+
+    # sysexit 指令要求返回的 eip 必须在 %edx 中，返回的 esp 必须在 %ecx 中。
+    movl %esi, %edx
+    movl %ebp, %ecx
+    
+    # sysexit 不会自动开启中断，我们需要在返回用户态前手动开中断
+    sti 
+    
+    sysexit
+*/

@@ -11,7 +11,7 @@ void sched_halt(void);
 void
 sched_yield(void)
 {
-	struct Env *idle;
+	// struct Env *idle;
 
 	// Implement simple round-robin scheduling.
 	//
@@ -30,7 +30,27 @@ sched_yield(void)
 	// below to halt the cpu.
 
 	// LAB 4: Your code here.
+	int start = 0;
+	int i;
 
+	// 如果当前有正在运行的环境，从它的下一个开始寻找
+	if (curenv) {
+		start = ENVX(curenv->env_id) + 1;
+	}
+
+	// 最多查找 NENV 次
+	for (i = 0; i < NENV; i++) {
+		int idx = (start + i) % NENV;
+		if (envs[idx].env_status == ENV_RUNNABLE) {
+			env_run(&envs[idx]);
+			// env_run 会直接切入用户态，永远不会返回
+		}
+	}
+
+	// 如果没有其他可运行的环境，但当前环境依然可以运行，那就接着跑自己
+	if (curenv && curenv->env_status == ENV_RUNNING) {
+		env_run(curenv);
+	}
 	// sched_halt never returns
 	sched_halt();
 }
@@ -76,7 +96,7 @@ sched_halt(void)
 		"pushl $0\n"
 		"pushl $0\n"
 		// Uncomment the following line after completing exercise 13
-		//"sti\n"
+		"sti\n"
 		"1:\n"
 		"hlt\n"
 		"jmp 1b\n"
