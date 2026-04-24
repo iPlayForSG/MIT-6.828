@@ -29,7 +29,16 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
 	if (_pgfault_handler == 0) {
 		// First time through!
 		// LAB 4: Your code here.
-		panic("set_pgfault_handler not implemented");
+		// 为当前进程分配一页物理内存作为用户异常栈，地址是 UXSTACKTOP 向下一页，权限需要可读可写、用户态可访问
+		if ((r = sys_page_alloc(0, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_P | PTE_W)) < 0) {
+			panic("set_pgfault_handler: sys_page_alloc failed %e", r);
+		}
+
+		// 向内核登记汇编的缺页异常入口点。0 代表当前环境，_pgfault_upcall 就是我们在 pfentry.S 里写的那个函数
+		if ((r = sys_env_set_pgfault_upcall(0, _pgfault_upcall)) < 0) {
+			panic("set_pgfault_handler: sys_env_set_pgfault_upcall failed %e", r);
+		}
+		// panic("set_pgfault_handler not implemented");
 	}
 
 	// Save handler pointer for assembly to call.
