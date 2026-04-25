@@ -434,7 +434,7 @@ kern/init.c 里把 user_primes 注释掉，之后 make qemu CPUS=2 就能看到�
 	ENV_CREATE(user_yield, ENV_TYPE_USER);
 ```
 
-![[MIT 6.828 Lab 4] 1](F:\Desktop\My Blog's Backup\[MIT 6.828] Lab 4 Preemptive Multitasking\img\[MIT 6.828 Lab 4] 1.png)
+![[MIT 6.828 Lab 4] 1](img\[MIT 6.828 Lab 4] 1.png)
 
 ### Question 3
 
@@ -630,7 +630,7 @@ case SYS_page_unmap:
 
 最后把 kern/init.c 的测试代码从 user_yield 换成 `  ENV_CREATE(user_dumbfork, ENV_TYPE_USER);`  
 
-![[MIT 6.828 Lab 4] 2](F:\Desktop\My Blog's Backup\[MIT 6.828] Lab 4 Preemptive Multitasking\img\[MIT 6.828 Lab 4] 2.png)
+![[MIT 6.828 Lab 4] 2](img\[MIT 6.828 Lab 4] 2.png)
 
 child 循环 20，parent 循环 10，所以除了交替输出以外 child 还多了 10 个
 
