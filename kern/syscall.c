@@ -142,7 +142,28 @@ sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
 	// LAB 5: Your code here.
 	// Remember to check whether the user has supplied us with a good
 	// address!
-	panic("sys_env_set_trapframe not implemented");
+	// panic("sys_env_set_trapframe not implemented");
+	struct Env *e;
+	int r;
+
+	// 找到对应的环境，权限检查：只能是自己或子进程
+	r = envid2env(envid, &e, 1);
+	if (r < 0) {
+		return r;
+	}
+
+	// 将用户传过来的 Trapframe 复制到目标环境的 env_tf 里
+	e->env_tf = *tf;
+	// 不能让用户进程给自己提权，设置代码段的 RPL 为 3
+	e->env_tf.tf_cs |= 3;
+	// 开启中断标志位，保证进程能被时钟中断打断
+	e->env_tf.tf_eflags |= FL_IF;
+	// 把 IOPL 权限抹掉
+	e->env_tf.tf_eflags &= ~FL_IOPL_MASK;
+
+	return 0;
+
+
 }
 
 // Set the page fault upcall for 'envid' by modifying the corresponding struct
@@ -503,6 +524,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 
 		case SYS_ipc_recv:
 			return sys_ipc_recv((void *)a1);
+			
+		case SYS_env_set_trapframe:
+			return sys_env_set_trapframe(a1, (struct Trapframe *)a2);
 			
 		default:
 			return -E_INVAL;

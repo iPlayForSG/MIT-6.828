@@ -141,7 +141,25 @@ devfile_write(struct Fd *fd, const void *buf, size_t n)
 	// remember that write is always allowed to write *fewer*
 	// bytes than requested.
 	// LAB 5: Your code here
-	panic("devfile_write not implemented");
+	// panic("devfile_write not implemented");
+
+	int r;
+
+	// 设置文件 ID
+	fsipcbuf.write.req_fileid = fd->fd_file.id;
+
+	// 限制单次写入的最大字节数，防止溢出
+	fsipcbuf.write.req_n = MIN(n, sizeof(fsipcbuf.write.req_buf));
+
+	// 将用户提供的数据复制进 IPC 共享缓冲中
+	memmove(fsipcbuf.write.req_buf, buf, fsipcbuf.write.req_n);
+
+	// 发起 IPC 调用，请求服务端写入磁盘
+	r = fsipc(FSREQ_WRITE, NULL);
+	
+	// 实际写入的字节数或者错误码
+	return r;
+
 }
 
 static int
