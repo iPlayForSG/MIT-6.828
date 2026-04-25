@@ -246,6 +246,18 @@ trap_dispatch(struct Trapframe *tf)
 		tf->tf_regs.reg_eax = ret;
 		return;
 	}
+
+	// 键盘硬件中断
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
+		kbd_intr();
+		return;
+	}
+	
+	// 串口硬件中断
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
+		serial_intr();
+		return;
+	}
 	
 	// Handle spurious interrupts
 	// The hardware sometimes raises these because of noise on the

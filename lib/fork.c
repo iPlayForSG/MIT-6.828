@@ -77,6 +77,15 @@ duppage(envid_t envid, unsigned pn)
 
 	// LAB 4: Your code here.
 	pte_t pte = uvpt[pn];
+
+	// 如果页表项带有 PTE_SHARE 标志，直接原样映射，不需要设置 OW
+	if (pte & PTE_SHARE) {
+		r = sys_page_map(0, addr, envid, addr, pte & PTE_SYSCALL);
+		if (r < 0) {
+			panic("duppage: sys_page_map PTE_SHARE failed: %e", r);
+		}
+		return 0;
+	}
 	
 	// 如果页是可写的，或者是写时复制的，需要共享为 COW
 	if ((pte & PTE_W) || (pte & PTE_COW)) {

@@ -55,7 +55,18 @@ again:
 			// then close the original 'fd'.
 
 			// LAB 5: Your code here.
-			panic("< redirection not implemented");
+			// 以只读方式打开
+			if ((fd = open(t, O_RDONLY)) < 0) {
+				cprintf("open %s for read: %e", t, fd);
+				exit();
+			}
+			// 将打开的文件描述符复制到 0
+			if (fd != 0) {
+				dup(fd, 0);
+				// 关闭原来的描述符
+				close(fd);
+			}
+			// panic("< redirection not implemented");
 			break;
 
 		case '>':	// Output redirection
