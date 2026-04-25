@@ -62,7 +62,24 @@ alloc_block(void)
 	// super->s_nblocks blocks in the disk altogether.
 
 	// LAB 5: Your code here.
-	panic("alloc_block not implemented");
+	// panic("alloc_block not implemented");
+	uint32_t blockno;
+
+	// 遍历整个磁盘的块，查找空闲块
+	for (blockno = 0; blockno < super->s_nblocks; blockno++) {
+		// 判断这一位是不是 1 
+		if (block_is_free(blockno)) {
+			// 清 0，标记为已使用
+			bitmap[blockno / 32] &= ~(1 << (blockno % 32));
+			
+			// 把被修改的位图数据写回磁盘
+			flush_block(&bitmap[blockno / 32]);
+			
+			return blockno;
+		}
+	}
+
+	// 磁盘空间已满
 	return -E_NO_DISK;
 }
 
@@ -134,8 +151,55 @@ fs_init(void)
 static int
 file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
-       // LAB 5: Your code here.
-       panic("file_block_walk not implemented");
+    // LAB 5: Your code here.
+    // panic("file_block_walk not implemented");
+	int r;
+    uint32_t *indirects;
+
+    // 如果块号超出了支持的最大范围 10 + 1024 = 1034，报错
+    if (filebno >= NDIRECT + NINDIRECT) {
+        return -E_INVAL;
+    }
+
+    // 如果是直接块，在 f_direct 里找
+    if (filebno < NDIRECT) {
+        if (ppdiskbno) {
+            *ppdiskbno = &(f->f_direct[filebno]);
+        }
+        return 0;
+    }
+
+    // 要找的是间接块里面的
+
+    // 检查一级间接块有没有分配
+    if (f->f_indirect == 0) {
+
+        if (alloc == 0) {
+            return -E_NOT_FOUND;
+        }
+        
+        // 分配一个物理磁盘块来当间接块
+        r = alloc_block();
+        if (r < 0) {
+            return r; // 没磁盘空间了
+        }
+        
+        // 记录块号，并将这个新的间接块清零，然后写回磁盘
+        f->f_indirect = r;
+        memset(diskaddr(r), 0, BLKSIZE);
+        flush_block(diskaddr(r));
+    }
+
+    // 找到间接块映射在内存中的起始虚拟地址
+    indirects = (uint32_t *) diskaddr(f->f_indirect);
+    
+    // 注意索引要减去前 10 个直接块的偏移
+    if (ppdiskbno) {
+        *ppdiskbno = &(indirects[filebno - NDIRECT]);
+    }
+
+    return 0;
+	
 }
 
 // Set *blk to the address in memory where the filebno'th
@@ -149,8 +213,36 @@ file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool all
 int
 file_get_block(struct File *f, uint32_t filebno, char **blk)
 {
-       // LAB 5: Your code here.
-       panic("file_get_block not implemented");
+    // LAB 5: Your code here.
+    // panic("file_get_block not implemented");
+	int r;
+    uint32_t *pdiskbno;
+
+    // 找到对应的块号指针
+    r = file_block_walk(f, filebno, &pdiskbno, 1);
+    if (r < 0) {
+        return r;
+    }
+
+    // 如果指针里的值是 0，说明具体的数据块还没分配
+    if (*pdiskbno == 0) {
+        r = alloc_block();
+        if (r < 0) {
+            return r;
+        }
+        *pdiskbno = r;
+        
+        // 新分配的数据块清零，防止读到旧数据
+        memset(diskaddr(r), 0, BLKSIZE);
+        flush_block(diskaddr(r));
+    }
+
+    // 将对应磁盘块映射在内存里的虚拟地址返回给 blk
+    if (blk) {
+        *blk = diskaddr(*pdiskbno);
+    }
+
+    return 0;
 }
 
 // Try to find a file named "name" in dir.  If so, set *file to it.
