@@ -125,3 +125,33 @@ e1000_attach(struct pci_func *pcif)
     // e1000_transmit(test, 17);
 	return 0;
 }
+
+static uint32_t next_rx_idx = 0;
+
+int
+e1000_receive(void *addr, size_t max_len)
+{
+	// 检查当前描述符里有没有数据
+	if (!(rx_ring[next_rx_idx].status & E1000_RXD_STAT_DD)) {
+		return -1;
+	}
+
+	// 获取实际接收到的包长度
+	size_t rx_len = rx_ring[next_rx_idx].length;
+	if (rx_len > max_len) {
+		rx_len = max_len;
+	}
+
+	// 将数据从 DMA 缓冲区复制到指定的内存 addr 中
+	memmove(addr, rx_bufs[next_rx_idx], rx_len);
+
+	rx_ring[next_rx_idx].status = 0;
+
+	// 将网卡的 RDT 指针更新到刚刚读完的这个位置
+	e1000[E1000_RDT / 4] = next_rx_idx;
+
+	// index 往后推 1
+	next_rx_idx = (next_rx_idx + 1) % RX_RING_SIZE;
+
+	return rx_len;
+}
