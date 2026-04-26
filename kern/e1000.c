@@ -80,8 +80,8 @@ e1000_attach(struct pci_func *pcif)
 	cprintf("E1000 status: 0x%08x\n", e1000[E1000_STATUS / sizeof(uint32_t)]);
 	e1000_tx_init();
 
-    char *test = "MIT 6.828 By iPlayForSG";
-    e1000_transmit(test, 17);
-    e1000_transmit(test, 17);
+    // char *test = "MIT 6.828 By iPlayForSG";
+    // e1000_transmit(test, 17);
+    // e1000_transmit(test, 17);
 	return 0;
 }

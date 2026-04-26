@@ -12,6 +12,7 @@
 #include <kern/console.h>
 #include <kern/sched.h>
 #include <kern/time.h>
+#include <kern/e1000.h>
 
 // Print a string to the system console.
 // The string is exactly 'len' characters long.
@@ -483,6 +484,13 @@ sys_time_msec(void)
 	return time_msec();
 }
 
+static int
+sys_pkt_send(void *buf, size_t len)
+{
+	// 检查内存是否属于用户空间，并且用户可读
+	user_mem_assert(curenv, buf, len, PTE_U);
+	return e1000_transmit(buf, len);
+}
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -540,6 +548,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 			
 		case SYS_time_msec:
 			return sys_time_msec();
+
+		case SYS_pkt_send:
+			return sys_pkt_send((void *)a1, (size_t)a2);
 			
 		default:
 			return -E_INVAL;
