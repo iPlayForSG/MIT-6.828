@@ -10,6 +10,9 @@ volatile uint32_t *e1000;
 struct tx_desc tx_ring[TX_RING_SIZE];
 char tx_bufs[TX_RING_SIZE][TX_PKT_SIZE];
 
+struct rx_desc rx_ring[RX_RING_SIZE];
+char rx_bufs[RX_RING_SIZE][RX_PKT_SIZE];
+
 static void
 e1000_tx_init()
 {
@@ -40,6 +43,42 @@ e1000_tx_init()
 	// Transmit Inter-packet Gap
 	// IEEE 802.3：IPGT = 10, IPGR1 = 8, IPGR2 = 6
 	e1000[E1000_TIPG / 4] = 10 | (8 << 10) | (6 << 20);
+}
+
+static void
+e1000_rx_init()
+{
+	int i;
+	// 设置 MAC 52:54:00:12:34:56
+	e1000[E1000_RAL / 4] = 0x12005452;
+	// 设置高 16 位，并开启第 31 位 Address Valid, 0x80000000
+	e1000[E1000_RAH / 4] = 0x5634 | 0x80000000;
+
+	// 清空组播表 MTA
+	for (i = 0; i < 128; i++) {
+		e1000[(E1000_MTA / 4) + i] = 0;
+	}
+
+	memset(rx_ring, 0, sizeof(rx_ring));
+	for (i = 0; i < RX_RING_SIZE; i++) {
+		rx_ring[i].addr = PADDR(rx_bufs[i]);
+		// 接收的时候不用设置状态位，硬件填满了会自动置位
+	}
+
+	//  Base Addr
+	e1000[E1000_RDBAL / 4] = PADDR(rx_ring);
+	e1000[E1000_RDBAH / 4] = 0;
+
+    // Length
+	e1000[E1000_RDLEN / 4] = sizeof(rx_ring);
+
+	// Head & Tail，RDT 别置 0
+	e1000[E1000_RDH / 4] = 0;
+	e1000[E1000_RDT / 4] = RX_RING_SIZE - 1;
+
+	// Receive Control
+	// EN: 开启 | BAM: 接收广播 | SECRC: 硬件自动去除 CRC 校验和
+	e1000[E1000_RCTL / 4] = E1000_RCTL_EN | E1000_RCTL_BAM | E1000_RCTL_SECRC;
 }
 
 int
@@ -79,6 +118,7 @@ e1000_attach(struct pci_func *pcif)
     e1000 = (volatile uint32_t *) mmio_map_region(pcif->reg_base[0], pcif->reg_size[0]);
 	cprintf("E1000 status: 0x%08x\n", e1000[E1000_STATUS / sizeof(uint32_t)]);
 	e1000_tx_init();
+    e1000_rx_init();
 
     // char *test = "MIT 6.828 By iPlayForSG";
     // e1000_transmit(test, 17);
