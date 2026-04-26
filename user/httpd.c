@@ -77,7 +77,21 @@ static int
 send_data(struct http_request *req, int fd)
 {
 	// LAB 6: Your code here.
-	panic("send_data not implemented");
+	// panic("send_data not implemented");
+	int r;
+	char buf[1024];
+
+	while ((r = read(fd, buf, sizeof(buf))) > 0) {
+		if (write(req->sock, buf, r) != r) {
+			return -1;
+		}
+	}
+
+	if (r < 0) {
+		return r;
+	}
+
+	return 0;
 }
 
 static int
@@ -223,7 +237,30 @@ send_file(struct http_request *req)
 	// set file_size to the size of the file
 
 	// LAB 6: Your code here.
-	panic("send_file not implemented");
+	// panic("send_file not implemented");
+	fd = -1;
+	struct Stat st;
+
+	// 以只读模式打开
+	if ((fd = open(req->url, O_RDONLY)) < 0) {
+		send_error(req, 404);
+		r = fd; 
+		goto end;
+	}
+	// 读取文件状态信息
+	if ((r = fstat(fd, &st)) < 0) {
+		send_error(req, 404);
+		goto end;
+	}
+
+	// 检查这个路径是不是一个目录。
+	if (st.st_isdir) {
+		send_error(req, 404);
+		r = -1;
+		goto end;
+	}
+
+	file_size = st.st_size;
 
 	if ((r = send_header(req, 200)) < 0)
 		goto end;
@@ -240,7 +277,9 @@ send_file(struct http_request *req)
 	r = send_data(req, fd);
 
 end:
-	close(fd);
+	if (fd >= 0) {
+		close(fd);
+	}
 	return r;
 }
 

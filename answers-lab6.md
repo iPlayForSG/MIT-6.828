@@ -9,3 +9,21 @@
 
 2. 跟 Question 1 其实是一样的，只不过反过来而已。唯一需要注意的是每一轮循环完毕后都要`sys_page_alloc(0, &nsipcbuf, PTE_P | PTE_U | PTE_W);`分配新的页供下一轮循环使用。
 
+# Question 3
+
+3. 
+```html
+<html>
+<head>
+        <title>jhttpd on JOS</title>
+</head>
+<body>
+        <center>
+                <h2>This file came from JOS.</h2>
+                <marquee>Cheesy web page!</marquee>
+        </center>
+</body>
+</html>
+```
+
+4. 小一天吧大概
