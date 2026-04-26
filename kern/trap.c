@@ -74,6 +74,48 @@ trap_init(void)
 
 	// LAB 3: Your code here.
 
+	extern uint32_t trap_entries[];
+	for (int i = 0; i <= 31; i++) {
+		// int dpl = 0;
+		int dpl = (i == T_BRKPT) ? 3 : 0; // Exercise 6 fix
+		SETGATE(idt[i], 0, GD_KT, trap_entries[i], dpl);
+	}
+	extern void syscall_entry();
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_entry, 3);
+
+	void irq_0();
+	void irq_1();
+	void irq_2();
+	void irq_3();
+	void irq_4();
+	void irq_5();
+	void irq_6();
+	void irq_7();
+	void irq_8();
+	void irq_9();
+	void irq_10();
+	void irq_11();
+	void irq_12();
+	void irq_13();
+	void irq_14();
+	void irq_15();
+
+	SETGATE(idt[IRQ_OFFSET + 0], 0, GD_KT, irq_0, 0);
+	SETGATE(idt[IRQ_OFFSET + 1], 0, GD_KT, irq_1, 0);
+	SETGATE(idt[IRQ_OFFSET + 2], 0, GD_KT, irq_2, 0);
+	SETGATE(idt[IRQ_OFFSET + 3], 0, GD_KT, irq_3, 0);
+	SETGATE(idt[IRQ_OFFSET + 4], 0, GD_KT, irq_4, 0);
+	SETGATE(idt[IRQ_OFFSET + 5], 0, GD_KT, irq_5, 0);
+	SETGATE(idt[IRQ_OFFSET + 6], 0, GD_KT, irq_6, 0);
+	SETGATE(idt[IRQ_OFFSET + 7], 0, GD_KT, irq_7, 0);
+	SETGATE(idt[IRQ_OFFSET + 8], 0, GD_KT, irq_8, 0);
+	SETGATE(idt[IRQ_OFFSET + 9], 0, GD_KT, irq_9, 0);
+	SETGATE(idt[IRQ_OFFSET + 10], 0, GD_KT, irq_10, 0);
+	SETGATE(idt[IRQ_OFFSET + 11], 0, GD_KT, irq_11, 0);
+	SETGATE(idt[IRQ_OFFSET + 12], 0, GD_KT, irq_12, 0);
+	SETGATE(idt[IRQ_OFFSET + 13], 0, GD_KT, irq_13, 0);
+	SETGATE(idt[IRQ_OFFSET + 14], 0, GD_KT, irq_14, 0);
+	SETGATE(idt[IRQ_OFFSET + 15], 0, GD_KT, irq_15, 0);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -107,22 +149,19 @@ trap_init_percpu(void)
 	//
 	// LAB 4: Your code here:
 
-	// Setup a TSS so that we get the right stack
-	// when we trap to the kernel.
-	ts.ts_esp0 = KSTACKTOP;
-	ts.ts_ss0 = GD_KD;
-	ts.ts_iomb = sizeof(struct Taskstate);
+	int i = cpunum();
+	// ts_esp0 指向该 CPU 专属的内核栈栈底
+	thiscpu->cpu_ts.ts_esp0 = KSTACKTOP - i * (KSTKSIZE + KSTKGAP);
+	thiscpu->cpu_ts.ts_ss0 = GD_KD;
+	// ts_iomb 设为结构体的大小，防止用户态通过 IO bitmap 越权访问端口
+	thiscpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
 
-	// Initialize the TSS slot of the gdt.
-	gdt[GD_TSS0 >> 3] = SEG16(STS_T32A, (uint32_t) (&ts),
-					sizeof(struct Taskstate) - 1, 0);
-	gdt[GD_TSS0 >> 3].sd_s = 0;
-
-	// Load the TSS selector (like other segment selectors, the
-	// bottom three bits are special; we leave them 0)
-	ltr(GD_TSS0);
-
-	// Load the IDT
+	gdt[(GD_TSS0 >> 3) + i] = SEG16(STS_T32A, (uint32_t) (&(thiscpu->cpu_ts)),
+									sizeof(struct Taskstate) - 1, 0);
+	gdt[(GD_TSS0 >> 3) + i].sd_s = 0;
+	// GD_TSS0 是第 0 个 CPU 的选择子，每个选择子占 8 字节，所以要偏移 (i << 3)
+	ltr(GD_TSS0 + (i << 3));
+	// 虽然 IDT 全系统共用，但每个 CPU 的 IDTR 寄存器是私有的，所以每个 CPU 都要加载一次
 	lidt(&idt_pd);
 }
 
@@ -178,6 +217,49 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
 
+	// 调试异常 T_DEBUG: 1
+	if (tf->tf_trapno == T_DEBUG) {
+		monitor(tf);
+		return;
+	}
+	
+	// 页错误异常 T_PGFLT: 14
+	if (tf->tf_trapno == T_PGFLT) {
+		page_fault_handler(tf);
+		return;
+	}
+
+	// 断点异常 T_BRKPT: 3
+	if (tf->tf_trapno == T_BRKPT) {
+		monitor(tf);
+		return;
+	}
+
+	if (tf->tf_trapno == T_SYSCALL) {
+		int32_t ret = syscall( // 注意寄存器顺序。eax 是调用号
+			tf->tf_regs.reg_eax,
+			tf->tf_regs.reg_edx,
+			tf->tf_regs.reg_ecx,
+			tf->tf_regs.reg_ebx,
+			tf->tf_regs.reg_edi,
+			tf->tf_regs.reg_esi
+		);
+		tf->tf_regs.reg_eax = ret;
+		return;
+	}
+
+	// 键盘硬件中断
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
+		kbd_intr();
+		return;
+	}
+	
+	// 串口硬件中断
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
+		serial_intr();
+		return;
+	}
+	
 	// Handle spurious interrupts
 	// The hardware sometimes raises these because of noise on the
 	// IRQ line or other reasons. We don't care.
@@ -199,6 +281,14 @@ trap_dispatch(struct Trapframe *tf)
 
 	// Handle keyboard and serial interrupts.
 	// LAB 5: Your code here.
+
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+		// 告诉 Local APIC 中断已收到
+		lapic_eoi();
+		// 2剥夺当前进程控制权，重新调度
+		sched_yield();
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -236,6 +326,7 @@ trap(struct Trapframe *tf)
 		// Acquire the big kernel lock before doing any
 		// serious kernel work.
 		// LAB 4: Your code here.
+		lock_kernel();
 		assert(curenv);
 
 		// Garbage collect if current enviroment is a zombie
@@ -281,7 +372,9 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
-
+	if ((tf->tf_cs & 3) == 0) {
+		panic("page fault in kernel mode, fault_va: 0x%08x", fault_va);
+	}
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
 
@@ -315,6 +408,40 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+
+	if (curenv->env_pgfault_upcall) {
+		struct UTrapframe *utf;
+
+		// 判断当前是否已处于用户异常栈 (嵌套异常)
+		if (tf->tf_esp >= UXSTACKTOP - PGSIZE && tf->tf_esp < UXSTACKTOP) {
+			// 在当前 esp 的基础上做下移 留出 4 字节的空字，外加 UTrapframe 的大小
+			utf = (struct UTrapframe *)(tf->tf_esp - 4 - sizeof(struct UTrapframe));
+		}
+		else {
+			// 普通异常直接放在用户异常栈的栈顶往下
+			utf = (struct UTrapframe *)(UXSTACKTOP - sizeof(struct UTrapframe));
+		}
+
+		// 用户程序可能登记了 upcall，但它压根没分配异常栈的物理页
+		// 如果不查就直接写，内核会在往 utf 写入数据时发生缺页，导致 panic。
+		user_mem_assert(curenv, (void *)utf, sizeof(struct UTrapframe), PTE_U | PTE_W);
+
+		// UTrapframe 构造
+		utf->utf_fault_va = fault_va;
+		utf->utf_err = tf->tf_err;       // 缺页的错误码
+		utf->utf_regs = tf->tf_regs;
+		utf->utf_eip = tf->tf_eip;
+		utf->utf_eflags = tf->tf_eflags; 
+		utf->utf_esp = tf->tf_esp;
+
+		// 让 CPU 在 iret 返回用户态时，强行跳去执行 upcall 函数，并且把栈指针强行切到这个刚刚做好的用户异常栈上。
+		tf->tf_eip = (uint32_t)curenv->env_pgfault_upcall;
+		tf->tf_esp = (uint32_t)utf;
+
+		// 按照篡改后的现场，恢复执行用户程序
+		env_run(curenv);
+	}
+
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",

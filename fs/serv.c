@@ -210,11 +210,30 @@ serve_read(envid_t envid, union Fsipc *ipc)
 	struct Fsreq_read *req = &ipc->read;
 	struct Fsret_read *ret = &ipc->readRet;
 
-	if (debug)
-		cprintf("serve_read %08x %08x %08x\n", envid, req->req_fileid, req->req_n);
+	// if (debug)
+	// 	cprintf("serve_read %08x %08x %08x\n", envid, req->req_fileid, req->req_n);
 
 	// Lab 5: Your code here:
-	return 0;
+	struct OpenFile *o;
+	int r;
+
+	// 查找文件 ID 是否合法，获取对应的 OpenFile 结构体
+	r = openfile_lookup(envid, req->req_fileid, &o);
+	if (r < 0) {
+		return r;
+	}
+
+	// 将数据读取到返回用的共享内存缓冲区中
+	r = file_read(o->o_file, ret->ret_buf, req->req_n, o->o_fd->fd_offset); // file_read(文件结构体, 读到哪, 读多少, 从哪个偏移量开始读)
+	if (r < 0) {
+		return r;
+	}
+
+	// 更新当前文件的读取偏移量
+	o->o_fd->fd_offset += r;
+
+	// 返回实际读取的字节数
+	return r;
 }
 
 
@@ -225,11 +244,30 @@ serve_read(envid_t envid, union Fsipc *ipc)
 int
 serve_write(envid_t envid, struct Fsreq_write *req)
 {
-	if (debug)
-		cprintf("serve_write %08x %08x %08x\n", envid, req->req_fileid, req->req_n);
+	// if (debug)
+	// 	cprintf("serve_write %08x %08x %08x\n", envid, req->req_fileid, req->req_n);
 
 	// LAB 5: Your code here.
-	panic("serve_write not implemented");
+	// panic("serve_write not implemented");
+	struct OpenFile *o;
+	int r;
+	// 查找对应的打开文件结构
+	r = openfile_lookup(envid, req->req_fileid, &o);
+	if (r < 0) {
+		return r;
+	}
+
+	// 调用 file_write 往块缓存里写数据
+	r = file_write(o->o_file, req->req_buf, req->req_n, o->o_fd->fd_offset);
+	if (r < 0) {
+		return r;
+	}
+
+	// 成功写入后更新文件偏移量
+	o->o_fd->fd_offset += r;
+
+	// 成功写入的字节数
+	return r;
 }
 
 // Stat ipc->stat.req_fileid.  Return the file's struct Stat to the
