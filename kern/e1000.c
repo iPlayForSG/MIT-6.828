@@ -43,6 +43,34 @@ e1000_tx_init()
 }
 
 int
+e1000_transmit(const void *data, size_t len)
+{
+	uint32_t tail = e1000[E1000_TDT / 4];
+
+	// 检查该描述符是否空闲：DD 位是否为 1
+	if (!(tx_ring[tail].status & E1000_TXD_STAT_DD)) {
+		// 队列满了，让用户态重试
+		return -1;
+	}
+
+	// 限制发送长度
+	if (len > TX_PKT_SIZE) {
+		len = TX_PKT_SIZE;
+	}
+	memmove(tx_bufs[tail], data, len);
+
+	tx_ring[tail].length = (uint16_t)len;
+	// RS: 发送完设置 DD 位 | EOP: 这是一个完整包的结尾
+	tx_ring[tail].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+	tx_ring[tail].status = 0;
+
+	// 更新 TDT 寄存器，注意环形队列取模
+	e1000[E1000_TDT / 4] = (tail + 1) % TX_RING_SIZE;
+
+	return 0;
+}
+
+int
 e1000_attach(struct pci_func *pcif)
 {
 	// 启用 PCI 设备，系统会自动配内存、IO 端口和 IRQ 中断号
@@ -51,5 +79,9 @@ e1000_attach(struct pci_func *pcif)
     e1000 = (volatile uint32_t *) mmio_map_region(pcif->reg_base[0], pcif->reg_size[0]);
 	cprintf("E1000 status: 0x%08x\n", e1000[E1000_STATUS / sizeof(uint32_t)]);
 	e1000_tx_init();
+
+    char *test = "MIT 6.828 By iPlayForSG";
+    e1000_transmit(test, 17);
+    e1000_transmit(test, 17);
 	return 0;
 }

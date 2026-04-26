@@ -47,4 +47,6 @@ struct tx_desc
 
 int e1000_attach(struct pci_func *pcif);
 
+int e1000_transmit(const void *data, size_t len);
+
 #endif  // SOL >= 6
